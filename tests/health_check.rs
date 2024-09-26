@@ -2,14 +2,14 @@
 mod tests {
     use actix_web::web;
     use actix_web::{http::StatusCode, test, App};
-    use zero2prod::routes::health_check;
-    use std::{env, net::TcpListener};
     use async_std::net::TcpStream;
     use once_cell::sync::Lazy;
-    use zero2prod::configuration::get_configuration;
-    use zero2prod::startup::run;
-    use tiberius::{Client, Config, AuthMethod};
     use std::error::Error;
+    use std::{env, net::TcpListener};
+    use tiberius::{AuthMethod, Client, Config};
+    use zero2prod::configuration::get_configuration;
+    use zero2prod::routes::health_check;
+    use zero2prod::startup::run;
 
     static CONN_STR: Lazy<String> = Lazy::new(|| {
         env::var("TIBERIUS_TEST_CONNECTION_STRING").unwrap_or_else(|_| {
@@ -47,5 +47,4 @@ mod tests {
         // // Check that the response has a 200 OK status
         // assert_eq!(resp.status(), StatusCode::OK);
     }
-   
 }

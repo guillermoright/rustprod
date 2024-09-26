@@ -1,16 +1,9 @@
-use std::{env, net::TcpListener};
-use async_std::net::TcpStream;
-use once_cell::sync::Lazy;
+use std::error::Error;
+use std::net::TcpListener;
 use zero2prod::configuration::get_configuration;
 use zero2prod::startup::run;
-use tiberius::{Client, Config, AuthMethod};
-use std::error::Error;
+use zero2prod::telemetry::{get_subscriber, init_subscriber};
 
-static CONN_STR: Lazy<String> = Lazy::new(|| {
-    env::var("TIBERIUS_TEST_CONNECTION_STRING").unwrap_or_else(|_| {
-        "Server=127.0.0.1\\mssqlserver19,1443;Database=AuthLogs;User Id=SA;Password=P4ssw0rd!;Encrypt=True;TrustServerCertificate=True;".to_owned()
-    })
-});
 
 #[actix_web::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -19,16 +12,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let listener = TcpListener::bind(address).map_err(|e| Box::new(e) as Box<dyn Error>)?;
     println!("Server is running at {}", configuration.application_port);
 
-    let config = Config::from_ado_string(&CONN_STR)?;
+    let mgr =
+        bb8_tiberius::ConnectionManager::build(configuration.database.connection_string.as_str())?;
+    let pool: bb8::Pool<bb8_tiberius::ConnectionManager> = bb8::Pool::builder().build(mgr).await?;
 
-    let tcp = TcpStream::connect(config.get_addr()).await.map_err(|e| Box::new(e) as Box<dyn Error>)?;
-    tcp.set_nodelay(true)?;
-
-    let mut client = Client::connect(config, tcp).await?;
-    
-    let stream = client.query("SELECT @P1", &[&1i32]).await?;
-    let row = stream.into_row().await?.unwrap();
-    println!("{:?}", row);
-    run(listener)?.await.map_err(|e| Box::new(e) as Box<dyn Error>)?;
+    let subscriber = get_subscriber("zero2prod".into(), "info".into());
+    init_subscriber(subscriber);
+    run(listener, pool)?
+        .await
+        .map_err(|e| Box::new(e) as Box<dyn Error>)?;
     Ok(())
 }
