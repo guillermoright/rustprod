@@ -28,6 +28,7 @@ tracing = "0.1.40"
 uuid = {version = "1.10.0", features = ["v4","fast-rng", "macro-diagnostics"]}
 secrecy = { version = "0.10.2", features = ["serde"] }
 tracing-actix-web = "0.7"
+unicode-segmentation = "1.12.0"
 
 [lib]
 # We could use any path here, but we are following the community convention

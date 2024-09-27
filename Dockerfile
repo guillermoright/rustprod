@@ -31,10 +31,11 @@ WORKDIR /app
 # Copy the built binary from the builder stage
 COPY --from=builder /app/target/release/zero2prod /app/zero2prod
 # Copy the configuration.yml file into the runtime image
-COPY --from=builder /app/configurationprod.yml /app/configuration.yml 
+# Copy the `config` folder from the builder stage to the runtime image
+COPY --from=builder /app/config /app/config
 
 # Expose any necessary ports
 EXPOSE 8080
-
+ENV APP_ENVIRONMENT production
 # Run the compiled binary
 ENTRYPOINT ["./zero2prod"]
