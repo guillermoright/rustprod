@@ -8,7 +8,7 @@ use zero2prod::telemetry::{get_subscriber, init_subscriber};
 #[actix_web::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let configuration = get_configuration().expect("Failed to read configuration.");
-    let address = format!("127.0.0.1:{}", configuration.application_port);
+    let address = format!("0.0.0.0:{}", configuration.application_port);
     let listener = TcpListener::bind(address).map_err(|e| Box::new(e) as Box<dyn Error>)?;
     println!("Server is running at {}", configuration.application_port);
 

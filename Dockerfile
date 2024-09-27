@@ -1,15 +1,40 @@
-# We use the latest Rust stable release as base image
-FROM rust:1.81-slim-bullseye
-# Let's switch our working directory to `app` (equivalent to `cd app`)
-# The `app` folder will be created for us by Docker in case it does not
-# exist already.
+# Stage 1: Build the application
+FROM rust:1.81-slim-bullseye AS builder
+
+# Install required system dependencies for building
 RUN apt-get update && apt-get install -y \
     pkg-config \
-    libssl-dev
+    libssl-dev \
+    && apt-get clean
+
+# Set the working directory
 WORKDIR /app
-# Install the required system dependencies for our linking configuration
+
+# Copy the entire project (including Cargo files and src) directly
 COPY . .
 
-RUN cargo build --locked --release
-# When `docker run` is executed, launch the binary!
-ENTRYPOINT ["./target/release/zero2prod"]
+# Build the project in release mode
+RUN cargo build --release --locked
+
+# Stage 2: Create a minimal runtime image
+FROM debian:bullseye-slim
+
+# Install runtime dependencies for OpenSSL
+RUN apt-get update && apt-get install -y \
+    libssl1.1 ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the built binary from the builder stage
+COPY --from=builder /app/target/release/zero2prod /app/zero2prod
+# Copy the configuration.yml file into the runtime image
+COPY --from=builder /app/configurationprod.yml /app/configuration.yml 
+
+# Expose any necessary ports
+EXPOSE 8080
+
+# Run the compiled binary
+ENTRYPOINT ["./zero2prod"]
