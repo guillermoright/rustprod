@@ -1,5 +1,36 @@
+use std::borrow::Cow;
+
+use validator::ValidateEmail;
+
 #[derive(Debug)]
 pub struct SubscriberEmail(String);
+
+// Implement the `parse` method for `SubscriberEmail`.
+impl SubscriberEmail {
+    pub fn parse(s: String) -> Result<SubscriberEmail, String> {
+        // Create a temporary SubscriberEmail for validation
+        let temp_email = SubscriberEmail(s);
+
+        // Use `validate_email` to check if it is a valid email.
+        if temp_email.validate_email() {
+            Ok(temp_email)
+        } else {
+            Err(format!("{} is not a valid subscriber email.", temp_email.0))
+        }
+    }
+
+    /// Returns a reference to the inner string.
+    pub fn value(&self) -> &str {
+        &self.0
+    }
+}
+
+impl ValidateEmail for SubscriberEmail {
+    fn as_email_string(&self) -> Option<Cow<str>> {
+        Some(Cow::from(self.0.as_str()))
+    }
+}
+
 // [...]
 // #[cfg(test)]
 // mod tests {

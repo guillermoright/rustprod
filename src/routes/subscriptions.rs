@@ -1,4 +1,5 @@
 use crate::domain::NewSubscriber;
+use crate::domain::SubscriberEmail;
 use crate::domain::SubscriberName;
 use actix_web::{web, HttpResponse, Result};
 use chrono::Utc;
@@ -7,11 +8,27 @@ use std::error::Error;
 use tracing::Instrument;
 use unicode_segmentation::UnicodeSegmentation;
 use uuid::Uuid;
+use validator::ValidateEmail;
 
 #[derive(Deserialize)]
 pub struct FormData {
     email: String,
     name: String,
+}
+
+pub fn parse_subscriber(form: FormData) -> Result<NewSubscriber, String> {
+    let name = SubscriberName::parse(form.name)?;
+    let email = SubscriberEmail::parse(form.email)?;
+    Ok(NewSubscriber { email, name })
+}
+
+impl TryFrom<FormData> for NewSubscriber {
+    type Error = String;
+    fn try_from(value: FormData) -> Result<Self, Self::Error> {
+        let name = SubscriberName::parse(value.name)?;
+        let email = SubscriberEmail::parse(value.email)?;
+        Ok(Self { email, name })
+    }
 }
 
 #[tracing::instrument(
@@ -29,25 +46,15 @@ pub async fn subscribe(
 ) -> HttpResponse {
     print!("{} {}", form.email, form.name);
 
-    let name: SubscriberName = match SubscriberName::parse(form.0.name) {
-        Ok(name) => name,
-        // Return early if the name is invalid, with a 400
+    let new_subscriber = match form.0.try_into() {
+        Ok(form) => form,
         Err(_) => return HttpResponse::BadRequest().finish(),
-        };
-    
-    if !is_valid_name(&name.as_str()) {
-        return HttpResponse::BadRequest().finish();
-    }
-    
-    let new_subscriber = NewSubscriber {
-        email: form.0.email,
-        name,
-        };
+    };
 
-    insert_subscriber(&pool, &new_subscriber)
-        .await
-        .expect("Failed to execute the query");
-    HttpResponse::Ok().finish()
+    match insert_subscriber(&pool, &new_subscriber).await {
+        Ok(_) => HttpResponse::Ok().finish(),
+        Err(_) => HttpResponse::InternalServerError().finish(),
+    }
 }
 
 /// Returns `true` if the input satisfies all our validation constraints
@@ -90,7 +97,7 @@ pub async fn insert_subscriber(
     "#;
     // Generate the dynamic values for the insert
     let id = Uuid::new_v4().to_string();
-    let email = &new_subscriber.email;
+    let email = new_subscriber.email.as_email_string();
     let name = new_subscriber.name.as_str();
     let subscribed_at = Utc::now().to_rfc3339();
 
@@ -98,7 +105,7 @@ pub async fn insert_subscriber(
     let _ = conn
         .execute(
             query,
-            &[&id, email, &name, &subscribed_at], // Parameters as references
+            &[&id, &email, &name, &subscribed_at], // Parameters as references
         )
         .await
         .map_err(|e| {
