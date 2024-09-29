@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use validator::ValidateEmail;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SubscriberEmail(String);
 
 // Implement the `parse` method for `SubscriberEmail`.
@@ -18,10 +18,12 @@ impl SubscriberEmail {
             Err(format!("{} is not a valid subscriber email.", temp_email.0))
         }
     }
+}
 
-    /// Returns a reference to the inner string.
-    pub fn value(&self) -> &str {
-        &self.0
+/// Implement `AsRef<str>` for `SubscriberEmail`.
+impl AsRef<str> for SubscriberEmail {
+    fn as_ref(&self) -> &str {
+        self.0.as_str()
     }
 }
 

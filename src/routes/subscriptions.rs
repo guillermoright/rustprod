@@ -16,6 +16,12 @@ pub struct FormData {
     name: String,
 }
 
+#[derive(Debug)]
+struct SubscribeError {}
+
+#[derive(Debug)]
+struct SubscribeError {}
+
 pub fn parse_subscriber(form: FormData) -> Result<NewSubscriber, String> {
     let name = SubscriberName::parse(form.name)?;
     let email = SubscriberEmail::parse(form.email)?;
