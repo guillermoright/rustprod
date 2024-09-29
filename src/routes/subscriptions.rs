@@ -1,14 +1,18 @@
 use crate::domain::NewSubscriber;
 use crate::domain::SubscriberEmail;
 use crate::domain::SubscriberName;
+use actix_web::http::StatusCode;
+use actix_web::ResponseError;
 use actix_web::{web, HttpResponse, Result};
 use chrono::Utc;
 use serde::Deserialize;
 use std::error::Error;
+use std::fmt;
 use tracing::Instrument;
 use unicode_segmentation::UnicodeSegmentation;
 use uuid::Uuid;
 use validator::ValidateEmail;
+use anyhow::Context;
 
 #[derive(Deserialize)]
 pub struct FormData {
@@ -16,11 +20,51 @@ pub struct FormData {
     name: String,
 }
 
-#[derive(Debug)]
-struct SubscribeError {}
+#[derive(thiserror::Error)]
+pub enum SubscribeError {
+    #[error("{0}")]
+    ValidationError(String),
+    // Transparent delegates both `Display`'s and `source`'s implementation
+    // to the type wrapped by `UnexpectedError`.
+    #[error(transparent)]
+    UnexpectedError(#[from] anyhow::Error),
+}
 
-#[derive(Debug)]
-struct SubscribeError {}
+// Implement `std::fmt::Debug` using the `error_chain_fmt` function for pretty printing
+impl fmt::Debug for SubscribeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        error_chain_fmt(self, f)
+    }
+}
+
+impl ResponseError for SubscribeError {
+    fn status_code(&self) -> StatusCode {
+        match self {
+            SubscribeError::ValidationError(_) => StatusCode::BAD_REQUEST,
+            SubscribeError::UnexpectedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+// // Implement `std::error::Error` for `SubscribeError`
+// impl std::error::Error for SubscribeError {
+//     fn source(&self) -> Option<&(dyn Error + 'static)> {
+//         match self {
+//             SubscribeError::ValidationError(_) => None,
+//             SubscribeError::SendEmailError(e) => Some(e),
+//         }
+//     }
+// }
+// impl From<String> for SubscribeError {
+//     fn from(e: String) -> Self {
+//     Self::ValidationError(e)
+//     }
+//     }
+// impl From<reqwest::Error> for SubscribeError {
+//     fn from(e: reqwest::Error) -> Self {
+//     Self::SendEmailError(e)
+//     }
+//     }
 
 pub fn parse_subscriber(form: FormData) -> Result<NewSubscriber, String> {
     let name = SubscriberName::parse(form.name)?;
@@ -49,18 +93,21 @@ impl TryFrom<FormData> for NewSubscriber {
 pub async fn subscribe(
     form: web::Form<FormData>,
     pool: web::Data<bb8::Pool<bb8_tiberius::ConnectionManager>>,
-) -> HttpResponse {
+) -> Result<HttpResponse, SubscribeError> {
     print!("{} {}", form.email, form.name);
 
-    let new_subscriber = match form.0.try_into() {
-        Ok(form) => form,
-        Err(_) => return HttpResponse::BadRequest().finish(),
-    };
+    // Convert the form data into a NewSubscriber struct
+    let new_subscriber = form.0.try_into().map_err(SubscribeError::ValidationError)?;
 
-    match insert_subscriber(&pool, &new_subscriber).await {
-        Ok(_) => HttpResponse::Ok().finish(),
-        Err(_) => HttpResponse::InternalServerError().finish(),
-    }
+    insert_subscriber(&pool, &new_subscriber)
+        .await
+        .context("Failed to insert new subscriber in the database.")?;
+
+    // Return a success response
+    Ok(HttpResponse::Ok().json(format!(
+        "Subscriber {} successfully added!",
+        &new_subscriber.name
+    )))
 }
 
 /// Returns `true` if the input satisfies all our validation constraints
@@ -93,7 +140,7 @@ pub fn is_valid_name(s: &str) -> bool {
 pub async fn insert_subscriber(
     pool: &bb8::Pool<bb8_tiberius::ConnectionManager>,
     new_subscriber: &NewSubscriber,
-) -> Result<String, Box<dyn Error>> {
+) -> Result<String, anyhow::Error> {
     let mut conn = pool.get().await?;
 
     // Construct the query
@@ -120,6 +167,17 @@ pub async fn insert_subscriber(
         })?;
 
     Ok(format!("Welcome {}!", &new_subscriber.name))
+}
+
+// Helper function for formatting the error chain
+fn error_chain_fmt(e: &impl std::error::Error, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    writeln!(f, "{}\n", e)?; // Print the main error message
+    let mut current = e.source();
+    while let Some(cause) = current {
+        writeln!(f, "Caused by:\n\t{}", cause)?; // Print each cause in the chain
+        current = cause.source();
+    }
+    Ok(())
 }
 
 // pub async fn select_subscriber(
