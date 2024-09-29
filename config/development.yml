@@ -1,3 +1,3 @@
-application_port: 8082
+application_port: 8080
 database:
   connection_string: "Server=host.docker.internal\\mssqlserver19,1443;Database=AuthLogs;User Id=SA;Password=P4ssw0rd!;Encrypt=True;TrustServerCertificate=True;"
